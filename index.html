@@ -1,13 +1,62 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>sonrisa-viva-dental-clinic</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sonrisa Viva</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: "#0058bc",
+            background: "#f9f9fb",
+            surface: "#f9f9fb",
+            "on-surface": "#1a1c1d",
+            "on-surface-variant": "#44474e",
+            "primary-container": "#d6e2ff",
+          }
+        }
+      }
+    }
+  </script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,700;0,900;1,900&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
+
+  <style>
+    /* Forzamos que todo el documento use Inter */
+    body {
+      font-family: 'Inter', sans-serif !important;
+      background-color: #f9f9fb;
+    }
+
+    /* El estilo exacto de tus títulos de la Imagen 2 */
+    h1,
+    h2 {
+      font-family: 'Inter', sans-serif !important;
+      font-style: italic !important;
+      font-weight: 900 !important;
+      letter-spacing: -0.06em !important;
+      /* Más apretado */
+      line-height: 0.85 !important;
+      /* Casi solapados */
+      text-transform: none;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/main.jsx"></script>
+</body>
+
 </html>
