@@ -9,17 +9,30 @@ const Booking = () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const [formData, setFormData] = useState({
-        firstName: '',
-        lastName: '',
-        email: '',
-        phone: '',
-        service: 'limpieza',
-        date: new Date(),
-        time: '10:00',
-        specialist: '',
-        comments: ''
+    // --- 1. LÓGICA DE LOCALSTORAGE (INICIALIZACIÓN) ---
+    const [formData, setFormData] = useState(() => {
+        const savedDraft = localStorage.getItem('booking_draft');
+        if (savedDraft) {
+            const parsed = JSON.parse(savedDraft);
+            return { ...parsed, date: new Date(parsed.date) };
+        }
+        return {
+            firstName: '',
+            lastName: '',
+            email: '',
+            phone: '',
+            service: 'limpieza',
+            date: new Date(),
+            time: '',
+            specialist: '',
+            comments: ''
+        };
     });
+
+    // --- 2. GUARDAR BORRADOR AUTOMÁTICAMENTE ---
+    useEffect(() => {
+        localStorage.setItem('booking_draft', JSON.stringify(formData));
+    }, [formData]);
 
     const services = [
         { id: 'limpieza', name: 'Limpieza Dental', icon: 'medical_services' },
@@ -38,26 +51,46 @@ const Booking = () => {
 
     const timeSlots = ['09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '16:00', '16:30'];
 
-    // --- VALIDACIONES DE TIEMPO ---
-    const isTimeDisabled = (slot) => {
+    const handlePhoneChange = (e) => {
+        const value = e.target.value.replace(/[^0-9+]/g, '');
+        setFormData({ ...formData, phone: value });
+    };
+
+    // --- CORRECCIÓN: Validación de hora en tiempo real ---
+    const isTimeDisabled = (slot, date = formData.date) => {
         const now = new Date();
-        const selectedDate = new Date(formData.date);
+        const selectedDate = new Date(date);
+        selectedDate.setHours(0, 0, 0, 0);
+
         if (selectedDate > today) return false;
+        if (selectedDate < today) return true;
 
         const [h, m] = slot.split(':').map(Number);
-        return h < now.getHours() || (h === now.getHours() && m <= now.getMinutes());
+        const slotTime = new Date();
+        slotTime.setHours(h, m, 0, 0);
+
+        return slotTime <= now;
     };
 
-    const isDayExpired = () => {
-        const selectedDate = new Date(formData.date);
-        if (selectedDate > today) return false;
-        const lastSlot = timeSlots[timeSlots.length - 1];
-        return isTimeDisabled(lastSlot);
+    // Función para saber si a un día le quedan horas libres (usada en el calendario)
+    const hasAvailableSlots = (date) => {
+        return timeSlots.some(slot => !isTimeDisabled(slot, date));
     };
 
-    // --- LÓGICA CALENDARIO ---
-    const changeMonth = (offset) => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + offset, 1));
+    const isFormValid = () => {
+        const { firstName, lastName, email, phone, time, date } = formData;
+        // La hora seleccionada no debe estar deshabilitada (por si se quedó guardada una de ayer)
+        const timeValid = time !== '' && !isTimeDisabled(time, date);
+
+        return firstName.trim() !== '' &&
+            lastName.trim() !== '' &&
+            email.includes('@') &&
+            phone.trim().length >= 9 &&
+            timeValid;
+    };
+
     const isSameDay = (d1, d2) => d1.toDateString() === d2.toDateString();
+    const changeMonth = (offset) => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + offset, 1));
 
     const renderDays = () => {
         const days = [];
@@ -67,11 +100,17 @@ const Booking = () => {
         for (let i = 0; i < startDay; i++) days.push(<div key={`empty-${i}`} className="p-2"></div>);
         for (let day = 1; day <= totalDays; day++) {
             const dateObj = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
+
+            // CORRECCIÓN: Si es hoy y ya pasaron todas las horas, se deshabilita el día
             const isPast = dateObj < today;
+            const isTodayButFinished = isSameDay(dateObj, today) && !hasAvailableSlots(dateObj);
+            const isDisabled = isPast || isTodayButFinished;
+
             const isSelected = isSameDay(dateObj, formData.date);
+
             days.push(
-                <button key={day} type="button" disabled={isPast} onClick={() => setFormData({ ...formData, date: dateObj })}
-                    className={`w-9 h-9 mx-auto rounded-full text-sm transition-all flex items-center justify-center ${isPast ? 'opacity-20 cursor-not-allowed' : 'hover:bg-primary/10'} ${isSelected ? 'bg-primary text-white font-bold' : 'text-on-surface'}`}>
+                <button key={day} type="button" disabled={isDisabled} onClick={() => setFormData({ ...formData, date: dateObj, time: '' })}
+                    className={`w-9 h-9 mx-auto rounded-full text-sm transition-all flex items-center justify-center ${isDisabled ? 'opacity-20 cursor-not-allowed' : 'hover:bg-primary/10'} ${isSelected && !isDisabled ? 'bg-primary text-white font-bold' : 'text-on-surface'}`}>
                     {day}
                 </button>
             );
@@ -79,11 +118,21 @@ const Booking = () => {
         return days;
     };
 
-    // --- SIMULACIÓN DE ENVÍO ---
+    // --- 3. CONFIRMACIÓN Y PERSISTENCIA FINAL ---
     const handleConfirm = () => {
-        if (isDayExpired()) return;
+        if (!isFormValid()) return;
         setIsSubmitting(true);
+
         setTimeout(() => {
+            const existingHistory = JSON.parse(localStorage.getItem('appointments_history') || '[]');
+            const newAppointment = {
+                ...formData,
+                id: Date.now(),
+                createdAt: new Date().toISOString()
+            };
+            localStorage.setItem('appointments_history', JSON.stringify([...existingHistory, newAppointment]));
+            localStorage.removeItem('booking_draft');
+
             setIsSubmitting(false);
             setIsSuccess(true);
         }, 2000);
@@ -91,13 +140,13 @@ const Booking = () => {
 
     if (isSuccess) {
         return (
-            <div className="pt-40 pb-32 px-6 flex flex-col items-center justify-center text-center animate-in fade-in zoom-in duration-500">
+            <div className="pt-40 pb-32 px-6 flex flex-col items-center justify-center text-center animate-in fade-in zoom-in">
                 <div className="w-24 h-24 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-6">
                     <span className="material-symbols-outlined text-6xl">check_circle</span>
                 </div>
-                <h1 className="text-4xl font-bold text-on-surface mb-4">¡Cita Reservada con Éxito!</h1>
-                <p className="text-on-surface-variant max-w-md mb-8">Hemos enviado un correo de confirmación a <strong>{formData.email || 'su email'}</strong> con los detalles de su visita.</p>
-                <button onClick={() => window.location.reload()} className="px-8 py-3 bg-primary text-white rounded-full font-bold">Volver al Inicio</button>
+                <h2 className="text-4xl font-bold text-on-surface mb-4">¡Cita Confirmada!</h2>
+                <p className="text-on-surface-variant max-w-md mb-8">Gracias, {formData.firstName}. Tu cita ha sido agendada y guardada en tu historial local para el {formData.date.toLocaleDateString()} a las {formData.time}h.</p>
+                <button onClick={() => window.location.reload()} className="px-10 py-4 bg-primary text-white rounded-full font-bold shadow-lg hover:shadow-primary/30 transition-all">Finalizar</button>
             </div>
         );
     }
@@ -109,40 +158,40 @@ const Booking = () => {
         <main className="pt-32 pb-32 px-6 max-w-7xl mx-auto min-h-screen relative">
             <div className="mb-12 max-w-3xl">
                 <span className="text-sm font-bold tracking-widest text-secondary uppercase mb-4 block">Agenda Tu Visita</span>
-                <h1 className="text-4xl md:text-6xl font-bold tracking-tight text-on-surface mb-2 leading-tight">Tu bienestar comienza aquí.</h1>
-                <p className="text-lg text-on-surface-variant font-light">Complete el formulario para asegurar su espacio con nuestros especialistas.</p>
+                <h1 className="text-4xl md:text-6xl font-bold tracking-tight text-on-surface leading-tight">Tu bienestar comienza aquí.</h1>
+                <p className="text-lg text-on-surface-variant font-light mt-6">Complete el formulario para asegurar su espacio con nuestros especialistas.</p>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16">
                 <div className="lg:col-span-7 xl:col-span-8 space-y-10">
-
                     {/* 1. Datos Personales */}
                     <section className="bg-white rounded-2xl p-8 shadow-sm border border-outline-variant/30">
                         <h2 className="text-2xl font-semibold text-on-surface">1. Datos Personales</h2>
-                        <p className="text-[15px] text-on-surface-variant/80 mt-1 mb-8">Introduzca sus datos para identificar su ficha de paciente.</p>
+                        <p className="text-[15px] text-on-surface-variant/80 mt-2 mb-8">Introduzca sus datos para identificar su ficha de paciente.</p>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {[
-                                { id: 'firstName', label: 'Nombre', placeholder: 'Ej. María' },
-                                { id: 'lastName', label: 'Apellidos', placeholder: 'Ej. García López' },
-                                { id: 'email', label: 'Correo Electrónico', placeholder: 'maria@ejemplo.com' },
-                                { id: 'phone', label: 'Teléfono', placeholder: 'Ej. 600 000 000' }
-                            ].map((f) => (
-                                <div key={f.id}>
-                                    <label className="block text-sm font-medium text-on-surface-variant mb-2">{f.label} *</label>
-                                    <input
-                                        onChange={(e) => setFormData({ ...formData, [f.id]: e.target.value })}
-                                        className="w-full bg-surface border border-outline-variant/30 rounded-lg px-4 py-3 focus:ring-2 focus:ring-primary outline-none transition-all"
-                                        placeholder={f.placeholder}
-                                    />
-                                </div>
-                            ))}
+                            <div>
+                                <label className="block text-sm font-medium text-on-surface-variant mb-2">Nombre *</label>
+                                <input value={formData.firstName} onChange={(e) => setFormData({ ...formData, firstName: e.target.value })} className="w-full bg-surface border border-outline-variant/30 rounded-lg px-4 py-3 outline-none" placeholder="Ej. María" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-on-surface-variant mb-2">Apellidos *</label>
+                                <input value={formData.lastName} onChange={(e) => setFormData({ ...formData, lastName: e.target.value })} className="w-full bg-surface border border-outline-variant/30 rounded-lg px-4 py-3 outline-none" placeholder="Ej. García López" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-on-surface-variant mb-2">Correo Electrónico *</label>
+                                <input value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} className="w-full bg-surface border border-outline-variant/30 rounded-lg px-4 py-3 outline-none" placeholder="maria@ejemplo.com" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-on-surface-variant mb-2">Teléfono *</label>
+                                <input value={formData.phone} onChange={handlePhoneChange} className="w-full bg-surface border border-outline-variant/30 rounded-lg px-4 py-3 outline-none" placeholder="Ej. 600000000" />
+                            </div>
                         </div>
                     </section>
 
                     {/* 2. Detalles de la Cita */}
                     <section className="bg-white rounded-2xl p-8 shadow-sm border border-outline-variant/30">
                         <h2 className="text-2xl font-semibold text-on-surface">2. Detalles de la Cita</h2>
-                        <p className="text-[15px] text-on-surface-variant/80 mt-1 mb-8">Seleccione el tratamiento que desea recibir.</p>
+                        <p className="text-[15px] text-on-surface-variant/80 mt-2 mb-8">Seleccione el tratamiento que desea recibir.</p>
                         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mb-8">
                             {services.map((s) => (
                                 <label key={s.id} className="cursor-pointer group">
@@ -155,19 +204,16 @@ const Booking = () => {
                             ))}
                         </div>
                         <label className="block text-sm font-medium text-on-surface-variant mb-2">Especialista (Opcional)</label>
-                        <div className="relative">
-                            <select value={formData.specialist} onChange={(e) => setFormData({ ...formData, specialist: e.target.value })} className="w-full bg-surface border border-outline-variant/30 rounded-lg px-4 py-3 appearance-none focus:ring-2 focus:ring-primary outline-none">
-                                <option value="">Cualquier especialista disponible</option>
-                                {specialists.map(sp => <option key={sp.id} value={sp.id}>{sp.name}</option>)}
-                            </select>
-                            <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none">expand_more</span>
-                        </div>
+                        <select value={formData.specialist} onChange={(e) => setFormData({ ...formData, specialist: e.target.value })} className="w-full bg-surface border border-outline-variant/30 rounded-lg px-4 py-3 appearance-none outline-none">
+                            <option value="">Cualquier especialista disponible</option>
+                            {specialists.map(sp => <option key={sp.id} value={sp.id}>{sp.name}</option>)}
+                        </select>
                     </section>
 
                     {/* 3. Fecha y Hora */}
                     <section className="bg-white rounded-2xl p-8 shadow-sm border border-outline-variant/30">
                         <h2 className="text-2xl font-semibold text-on-surface">3. Fecha y Hora</h2>
-                        <p className="text-[15px] text-on-surface-variant/80 mt-1 mb-8">Navegue por el calendario para elegir su cita.</p>
+                        <p className="text-[15px] text-on-surface-variant/80 mt-2 mb-8">Navegue por el calendario para elegir su cita.</p>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                             <div className="border border-outline-variant/30 rounded-xl p-6 bg-surface">
                                 <div className="flex justify-between items-center mb-6">
@@ -180,16 +226,13 @@ const Booking = () => {
                                 </div>
                                 <div className="grid grid-cols-7 gap-1 text-center">{renderDays()}</div>
                             </div>
-                            <div>
-                                <h3 className="text-sm font-medium text-on-surface-variant mb-4 capitalize">{formData.date.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}</h3>
-                                <div className="grid grid-cols-2 gap-3">
-                                    {timeSlots.map(t => (
-                                        <button key={t} disabled={isTimeDisabled(t)} onClick={() => setFormData({ ...formData, time: t })}
-                                            className={`py-3 rounded-lg border text-sm transition-all active:scale-95 ${isTimeDisabled(t) ? 'opacity-30 cursor-not-allowed grayscale' : formData.time === t ? 'bg-primary text-white border-primary shadow-lg shadow-primary/20' : 'border-outline-variant/30 hover:border-primary'}`}>
-                                            {t}
-                                        </button>
-                                    ))}
-                                </div>
+                            <div className="grid grid-cols-2 gap-3 h-fit">
+                                {timeSlots.map(t => (
+                                    <button key={t} disabled={isTimeDisabled(t)} onClick={() => setFormData({ ...formData, time: t })}
+                                        className={`py-3 rounded-lg border text-sm transition-all ${isTimeDisabled(t) ? 'opacity-20 cursor-not-allowed' : formData.time === t ? 'bg-primary text-white border-primary shadow-lg' : 'border-outline-variant/30 hover:border-primary'}`}>
+                                        {t}
+                                    </button>
+                                ))}
                             </div>
                         </div>
                     </section>
@@ -197,39 +240,31 @@ const Booking = () => {
                     {/* 4. Comentarios */}
                     <section className="bg-white rounded-2xl p-8 shadow-sm border border-outline-variant/30">
                         <h2 className="text-2xl font-semibold text-on-surface">4. Comentarios Adicionales</h2>
-                        <p className="text-[15px] text-on-surface-variant/80 mt-1 mb-6">Indique cualquier observación previa para el doctor.</p>
-                        <textarea
-                            onChange={(e) => setFormData({ ...formData, comments: e.target.value })}
-                            className="w-full bg-surface border border-outline-variant/30 rounded-lg px-4 py-3 focus:ring-2 focus:ring-primary outline-none transition-all resize-none"
-                            placeholder="Escriba aquí (alergias, motivo específico, etc.)..." rows="3"
-                        ></textarea>
+                        <p className="text-[15px] text-on-surface-variant/80 mt-2 mb-6">Indique cualquier observación previa para el doctor.</p>
+                        <textarea value={formData.comments} onChange={(e) => setFormData({ ...formData, comments: e.target.value })} className="w-full bg-surface border border-outline-variant/30 rounded-lg px-4 py-3 outline-none resize-none" placeholder="Escriba aquí..." rows="3"></textarea>
                     </section>
                 </div>
 
-                {/* SIDEBAR */}
-                <aside className="hidden lg:block lg:col-span-5 xl:col-span-4 sticky top-32">
-                    <div className="bg-white rounded-3xl p-8 border border-outline-variant/40 shadow-xl">
+                {/* SIDEBAR STICKY (DERECHA) */}
+                <aside className="hidden lg:block lg:col-span-5 xl:col-span-4 h-full">
+                    <div className="sticky top-32 bg-white rounded-3xl p-8 border border-outline-variant/40 shadow-xl">
                         <h3 className="text-xl font-semibold mb-6 text-on-surface border-b pb-4">Resumen de tu Cita</h3>
                         <div className="space-y-6">
                             <SummaryItem icon="medical_services" label="Servicio" value={selectedServiceName} />
-                            <SummaryItem icon="calendar_month" label="Fecha y Hora" value={formData.date.toLocaleDateString('es-ES')} subValue={`${formData.time} h`} />
+                            <SummaryItem icon="calendar_month" label="Fecha y Hora" value={formData.date.toLocaleDateString('es-ES')} subValue={formData.time ? `${formData.time} h` : 'Hora no seleccionada'} />
                             {formData.specialist && <SummaryItem icon="stethoscope" label="Especialista" value={selectedSpecName} />}
+                            <SummaryItem icon="location_on" label="Ubicación" value="Clínica Sonrisa Viva" />
                         </div>
                         <div className="mt-10">
                             <button
                                 onClick={handleConfirm}
-                                disabled={isDayExpired() || isSubmitting}
-                                className={`w-full flex items-center justify-center px-8 py-4 rounded-full bg-gradient-to-br from-primary to-primary-container text-white font-medium text-lg transition-all shadow-lg active:scale-95 group ${isDayExpired() ? 'grayscale cursor-not-allowed' : 'hover:opacity-90'}`}
+                                disabled={!isFormValid() || isSubmitting}
+                                className={`w-full flex items-center justify-center px-8 py-4 rounded-full bg-gradient-to-br from-primary to-primary-container text-white font-medium text-lg transition-all shadow-lg group ${!isFormValid() ? 'opacity-40 grayscale cursor-not-allowed' : 'hover:opacity-90 active:scale-95'}`}
                             >
-                                {isSubmitting ? (
-                                    <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                                ) : (
-                                    <>Confirmar Reserva <span className="material-symbols-outlined ml-2 group-hover:translate-x-1 transition-transform">arrow_forward</span></>
-                                )}
+                                {isSubmitting ? 'Procesando...' : 'Confirmar Reserva'}
                             </button>
-                            {isDayExpired() && <p className="text-error text-[11px] text-center mt-2 font-bold uppercase tracking-tighter">Horario no disponible para hoy</p>}
-                            <p className="text-[11px] text-center text-on-surface-variant mt-4 leading-relaxed">
-                                Al confirmar, aceptas nuestros <a href="#" className="underline font-bold hover:text-primary">Términos y Condiciones</a> así como nuestra política de privacidad.
+                            <p className="text-[11px] text-center text-on-surface-variant mt-4">
+                                Al confirmar, aceptas nuestros <a href="#" className="underline font-bold">Términos y Condiciones</a>.
                             </p>
                         </div>
                     </div>
@@ -237,24 +272,27 @@ const Booking = () => {
             </div>
 
             {/* DRAWER MÓVIL */}
-            <div className={`lg:hidden fixed inset-x-0 bottom-0 z-[100] transition-all duration-500 ease-in-out ${isDrawerOpen ? 'translate-y-0' : 'translate-y-[calc(100%-80px)]'}`}>
+            <div className={`lg:hidden fixed inset-x-0 bottom-0 z-[100] transition-all duration-500 ease-in-out ${isDrawerOpen ? 'translate-y-0' : 'translate-y-[calc(100%-85px)]'}`}>
                 <div className="bg-white border-t border-outline-variant/40 shadow-[0_-15px_40px_rgba(0,0,0,0.12)] rounded-t-[40px] px-8 pb-8 pt-2">
-                    <button onClick={() => setIsDrawerOpen(!isDrawerOpen)} className="w-full flex flex-col items-center py-3">
-                        <div className="w-12 h-1.5 bg-outline-variant/30 rounded-full mb-4"></div>
-                        <span className="text-[10px] uppercase tracking-widest font-black text-primary">{isDrawerOpen ? 'Cerrar Resumen' : 'Toca para ver Resumen'}</span>
+                    <button onClick={() => setIsDrawerOpen(!isDrawerOpen)} className="w-full flex flex-col items-center py-2 mb-2">
+                        <span className={`material-symbols-outlined text-primary transition-transform duration-300 ${isDrawerOpen ? 'rotate-180' : ''}`}>
+                            keyboard_arrow_up
+                        </span>
+                        <span className="text-[10px] font-black text-primary uppercase tracking-widest mt-1">Resumen de Cita</span>
                     </button>
                     <div className={`transition-all duration-300 ${isDrawerOpen ? 'opacity-100 h-auto mb-8' : 'opacity-0 h-0 overflow-hidden'}`}>
-                        <SummaryItem icon="medical_services" label="Servicio" value={selectedServiceName} />
-                        <SummaryItem icon="calendar_month" label="Cita" value={`${formData.date.toLocaleDateString('es-ES')} - ${formData.time}h`} />
+                        <div className="grid grid-cols-1 gap-6">
+                            <SummaryItem icon="medical_services" label="Servicio" value={selectedServiceName} />
+                            <SummaryItem icon="calendar_month" label="Cita" value={`${formData.date.toLocaleDateString('es-ES')} - ${formData.time || '--'}h`} />
+                        </div>
                     </div>
                     <button
                         onClick={handleConfirm}
-                        disabled={isDayExpired() || isSubmitting}
-                        className="w-full flex items-center justify-center px-8 py-4 rounded-full bg-gradient-to-br from-primary to-primary-container text-white font-bold text-lg shadow-lg active:scale-95"
+                        disabled={!isFormValid() || isSubmitting}
+                        className={`w-full flex items-center justify-center py-4 rounded-full bg-gradient-to-br from-primary to-primary-container text-white font-bold text-lg shadow-lg active:scale-95 transition-all ${!isFormValid() ? 'opacity-40 grayscale' : ''}`}
                     >
-                        {isSubmitting ? 'Procesando...' : 'Confirmar Reserva'}
+                        {isSubmitting ? 'Enviando...' : 'Confirmar Reserva'}
                     </button>
-                    <p className="text-[10px] text-center text-on-surface-variant mt-3">Al reservar aceptas los <a href="#" className="underline font-bold">Términos y Condiciones</a>.</p>
                 </div>
             </div>
         </main>

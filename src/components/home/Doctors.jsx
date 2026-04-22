@@ -1,7 +1,7 @@
 import React from 'react';
 
 const doctors = [
-    { name: 'Dra. Elena Martínez', specialty: 'Especialista en Ortodoncia', years: '12', img: 'https://images.unsplash.com/photo-1559839734-2b71f1536783?auto=format&fit=crop&q=80&w=800' },
+    { name: 'Dr. Elver Galarga', specialty: 'Especialista en Ortodoncia', years: '12', img: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ-v7VN8QzmLqNfos4blLd7ntCc36rrUCbwFWof8QN1IPa5ydpgKfymRaK5&s=10' },
     { name: 'Dr. Javier Solana', specialty: 'Cirujano Implantólogo', years: '15', img: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=800' },
     { name: 'Dra. Sofía Rivas', specialty: 'Odontología Estética', years: '10', img: 'https://images.unsplash.com/photo-1594824476967-48c8b964273f?auto=format&fit=crop&q=80&w=800' }
 ];

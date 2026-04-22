@@ -11,7 +11,7 @@ const services = [
 
 const Services = () => {
     return (
-        <section className="py-24 px-6 bg-background">
+        <section id="servicios" className="py-24 px-6 bg-background">
             <div className="max-w-7xl mx-auto">
                 <div className="mb-16">
                     {/* El label pequeño encima */}
